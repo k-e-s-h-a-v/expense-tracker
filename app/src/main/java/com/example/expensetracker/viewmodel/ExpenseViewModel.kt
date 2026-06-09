@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.expensetracker.model.ExpenseCategory
 import com.example.expensetracker.model.SmsTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,9 @@ class ExpenseViewModel : ViewModel() {
         currentStrings.add(serializeCategory(newCat))
         prefs.edit().putStringSet("categories", currentStrings).apply()
         
-        _categories.value = _categories.value + newCat
+        val currentCats = _categories.value.toMutableList()
+        currentCats.add(newCat)
+        _categories.value = currentCats
         _activeCategoryId.value = id
     }
 

@@ -6,14 +6,20 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.expensetracker.model.ExpenseCategory
 import com.example.expensetracker.viewmodel.ExpenseViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,7 +98,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
                 Text("Categories", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.titleSmall)
                 
-                categories.forEach { category ->
+                for (category in categories) {
                     NavigationDrawerItem(
                         label = { Text(category.name) },
                         selected = activeCategoryId == category.id,
@@ -112,7 +118,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                     },
                     modifier = Modifier.fillMaxWidth().padding(16.dp)
                 ) {
-                    Icon(androidx.compose.material.icons.Icons.Default.Add, contentDescription = null)
+                    Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Create Category")
                 }
@@ -125,7 +131,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                     title = { Text(categories.find { it.id == activeCategoryId }?.name ?: "Expense Tracker") },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(androidx.compose.material.icons.Icons.Default.Menu, contentDescription = "Menu")
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
