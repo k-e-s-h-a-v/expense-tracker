@@ -1,0 +1,42 @@
+# Gradle files
+
+.gradle/
+build/
+app/build/
+
+# Local configuration files (contains your local Android SDK path)
+
+# local.properties
+
+# Log files
+
+*.log
+
+# Android Studio / IntelliJ files (even if you don't use AS, system files might get generated)
+
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# macOS / Windows system files
+
+.DS_Store
+Thumbs.db
+
+# Built APKs/Bundles (we want to compile them fresh, not store them in Git)
+
+*.apk
+*.ap_
+*.aab
+
+# Keystore files (for signing releases - keep these private!)
+
+*.jks
+*.keystore
+
+# Temporary files
+
+*.tmp
+*.bak

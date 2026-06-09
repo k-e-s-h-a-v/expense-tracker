@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- We changed the parent style to 'android:Theme.DeviceDefault.NoActionBar' 
+         which is built directly into Android. This fixes the AAPT linking error. -->
+    <style name="Theme.ExpenseTracker" parent="android:Theme.DeviceDefault.NoActionBar">
+    </style>
+</resources>
