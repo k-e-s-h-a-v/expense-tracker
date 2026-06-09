@@ -8,6 +8,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -100,7 +102,24 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                 
                 for (category in categories) {
                     NavigationDrawerItem(
-                        label = { Text(category.name) },
+                        label = { 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(category.name, modifier = Modifier.weight(1f))
+                                IconButton(
+                                    onClick = { viewModel.deleteCategory(context, category.id) }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete, 
+                                        contentDescription = "Delete Category",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        },
                         selected = activeCategoryId == category.id,
                         onClick = {
                             viewModel.selectCategory(category.id)
@@ -111,17 +130,6 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = { 
-                        showCreateCategoryDialog = true
-                        scope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Create Category")
-                }
             }
         }
     ) {
@@ -132,6 +140,31 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    },
+                    actions = {
+                        val isAnyFilterActive = selectedDateMs != viewModel.defaultDateMs || 
+                                               selectedSenders.isNotEmpty() || 
+                                               selectedMerchants.isNotEmpty()
+                        
+                        val isSaveEnabled = if (activeCategoryId == null) {
+                            isAnyFilterActive
+                        } else {
+                            val activeCat = categories.find { it.id == activeCategoryId }
+                            activeCat != null && (
+                                activeCat.startDateMs != selectedDateMs ||
+                                activeCat.selectedSenders != selectedSenders ||
+                                activeCat.selectedMerchants != selectedMerchants
+                            )
+                        }
+
+                        if (isAnyFilterActive) {
+                            IconButton(
+                                onClick = { showCreateCategoryDialog = true },
+                                enabled = isSaveEnabled
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = "Save Category")
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -176,10 +209,13 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
     }
 
     if (showCreateCategoryDialog) {
-        var categoryName by remember { mutableStateOf("") }
+        val activeCategory = categories.find { it.id == activeCategoryId }
+        var categoryName by remember { mutableStateOf(activeCategory?.name ?: "") }
+        val isDuplicate = categories.any { it.name == categoryName && it.id != activeCategoryId }
+        
         AlertDialog(
             onDismissRequest = { showCreateCategoryDialog = false },
-            title = { Text("Create Category") },
+            title = { Text(if (activeCategoryId == null) "Create Category" else "Update Category") },
             text = {
                 Column {
                     Text("This will save the current filters (Date, Senders, Merchants) as a category.", style = MaterialTheme.typography.bodySmall)
@@ -189,19 +225,30 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                         onValueChange = { categoryName = it },
                         label = { Text("Category Name") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = isDuplicate,
+                        supportingText = {
+                            if (isDuplicate) {
+                                Text("Category name already exists", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
                     )
                 }
             },
             confirmButton = {
+                val currentActiveId = activeCategoryId
                 Button(
                     onClick = {
-                        if (categoryName.isNotBlank()) {
-                            viewModel.saveCategory(context, categoryName)
+                        if (categoryName.isNotBlank() && !isDuplicate) {
+                            if (currentActiveId == null) {
+                                viewModel.saveCategory(context, categoryName)
+                            } else {
+                                viewModel.updateCategory(context, currentActiveId, categoryName)
+                            }
                             showCreateCategoryDialog = false
                         }
                     },
-                    enabled = categoryName.isNotBlank()
+                    enabled = categoryName.isNotBlank() && !isDuplicate
                 ) {
                     Text("Save")
                 }

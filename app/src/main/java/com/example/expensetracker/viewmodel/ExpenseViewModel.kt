@@ -41,6 +41,9 @@ class ExpenseViewModel : ViewModel() {
     private val _activeCategoryId = MutableStateFlow<String?>(null)
     val activeCategoryId: StateFlow<String?> = _activeCategoryId.asStateFlow()
 
+    // Default date for "All Transactions"
+    val defaultDateMs = getFirstDayOfMonth()
+
     private val amountRegex = Regex("(?i)(?:rs\\.?|inr)\\s?([\\d,]+\\.?\\d*)")
     private val debitRegex = Regex("(?i)(debited|spent|paid|sent|withdrawn|used at|transaction at|payment to|purchased at)")
     
@@ -76,15 +79,63 @@ class ExpenseViewModel : ViewModel() {
             selectedSenders = _selectedSenders.value,
             selectedMerchants = _selectedMerchants.value
         )
-        val prefs = context.getSharedPreferences("expense_categories", Context.MODE_PRIVATE)
-        val currentStrings = prefs.getStringSet("categories", emptySet())?.toMutableSet() ?: mutableSetOf()
-        currentStrings.add(serializeCategory(newCat))
-        prefs.edit().putStringSet("categories", currentStrings).apply()
+        saveCategoryToPrefs(context, newCat)
         
         val currentCats = _categories.value.toMutableList()
         currentCats.add(newCat)
         _categories.value = currentCats
         _activeCategoryId.value = id
+    }
+
+    fun updateCategory(context: Context, categoryId: String, newName: String) {
+        val currentCat = _categories.value.find { it.id == categoryId } ?: return
+        val updatedCat = currentCat.copy(
+            name = newName,
+            startDateMs = _selectedDateMs.value,
+            selectedSenders = _selectedSenders.value,
+            selectedMerchants = _selectedMerchants.value
+        )
+        
+        // Remove old and add new in SharedPreferences
+        val prefs = context.getSharedPreferences("expense_categories", Context.MODE_PRIVATE)
+        val currentStrings = prefs.getStringSet("categories", emptySet())?.toMutableSet() ?: mutableSetOf()
+        
+        // Find and remove old serialization
+        val oldSerialization = currentStrings.find { it.startsWith("$categoryId|") }
+        if (oldSerialization != null) {
+            currentStrings.remove(oldSerialization)
+        }
+        
+        currentStrings.add(serializeCategory(updatedCat))
+        prefs.edit().putStringSet("categories", currentStrings).apply()
+
+        val updatedCats = _categories.value.map { 
+            if (it.id == categoryId) updatedCat else it 
+        }
+        _categories.value = updatedCats
+    }
+
+    fun deleteCategory(context: Context, categoryId: String) {
+        val prefs = context.getSharedPreferences("expense_categories", Context.MODE_PRIVATE)
+        val currentStrings = prefs.getStringSet("categories", emptySet())?.toMutableSet() ?: mutableSetOf()
+        
+        val toRemove = currentStrings.find { it.startsWith("$categoryId|") }
+        if (toRemove != null) {
+            currentStrings.remove(toRemove)
+            prefs.edit().putStringSet("categories", currentStrings).apply()
+        }
+
+        _categories.value = _categories.value.filter { it.id != categoryId }
+        if (_activeCategoryId.value == categoryId) {
+            selectCategory(null)
+        }
+    }
+
+    private fun saveCategoryToPrefs(context: Context, cat: ExpenseCategory) {
+        val prefs = context.getSharedPreferences("expense_categories", Context.MODE_PRIVATE)
+        val currentStrings = prefs.getStringSet("categories", emptySet())?.toMutableSet() ?: mutableSetOf()
+        currentStrings.add(serializeCategory(cat))
+        prefs.edit().putStringSet("categories", currentStrings).apply()
     }
 
     fun selectCategory(categoryId: String?) {
@@ -174,6 +225,7 @@ class ExpenseViewModel : ViewModel() {
     fun clearFilters() {
         _selectedSenders.value = emptySet()
         _selectedMerchants.value = emptySet()
+        _selectedDateMs.value = defaultDateMs
     }
 
     private suspend fun fetchAllSenders(context: Context, sinceMs: Long): Set<String> = withContext(Dispatchers.IO) {
