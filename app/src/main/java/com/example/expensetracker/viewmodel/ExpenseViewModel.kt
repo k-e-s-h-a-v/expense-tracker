@@ -42,8 +42,17 @@ class ExpenseViewModel : ViewModel() {
     val activeCategoryId: StateFlow<String?> = _activeCategoryId.asStateFlow()
 
     private val amountRegex = Regex("(?i)(?:rs\\.?|inr)\\s?([\\d,]+\\.?\\d*)")
-    private val debitRegex = Regex("(?i)(debited|spent|paid|sent|withdrawn)")
-    private val upiMerchantRegex = Regex("(?i)(?:to|at)\\s+([^.,\\d][^.,]*(?=(?:on|using|ref)))")
+    private val debitRegex = Regex("(?i)(debited|spent|paid|sent|withdrawn|used at|transaction at|payment to|purchased at)")
+    
+    // Improved merchant extraction based on various formats
+    private val merchantPatterns = listOf(
+        Regex("(?i)used at\\s+(.*?)\\s+for"),
+        Regex("(?i)transaction at\\s+(.*?)\\s+for"),
+        Regex("(?i)paid to\\s+(.*?)\\s+on"),
+        Regex("(?i)sent to\\s+(.*?)\\s+on"),
+        Regex("(?i);\\s+(.*?)\\s+credited"), // ICICI case: debited for ...; XXX credited
+        Regex("(?i)(?:to|at)\\s+([^.,\\d][^.,]*(?=(?:on|using|ref|for)))")
+    )
 
     // Load everything
     fun init(context: Context) {
@@ -215,8 +224,16 @@ class ExpenseViewModel : ViewModel() {
                         
                         val sender = it.getString(addrIdx) ?: "Unknown"
                         
-                        // Try extract merchant from body
-                        val extractedMerchant = upiMerchantRegex.find(body)?.groupValues?.get(1)?.trim()
+                        // Try extract merchant from body using multiple patterns
+                        var extractedMerchant: String? = null
+                        for (regex in merchantPatterns) {
+                            val match = regex.find(body)
+                            if (match != null) {
+                                extractedMerchant = match.groupValues.getOrNull(1)?.trim()
+                                if (!extractedMerchant.isNullOrBlank()) break
+                            }
+                        }
+                        
                         val savedMerchant = prefs.getString(sender, null)
 
                         transactions.add(
