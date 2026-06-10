@@ -1,5 +1,7 @@
 ./gradlew installDebug
 
+./gradlew clean; ./gradlew installDebug --stacktrace
+
 ./gradlew assembleDebug
 
 adb pair 192.168.1.5:34977
