@@ -2,6 +2,8 @@
 
 Android app that reads debit SMS messages and tracks spending. Built with Kotlin and Jetpack Compose.
 
+
+[📥 Download the Latest APK](https://github.com/k-e-s-h-a-v/expense-tracker/releases/latest/download/ExpenseTracker.apk)
 ## Commands
 
 Build and install the debug app on a connected device.
