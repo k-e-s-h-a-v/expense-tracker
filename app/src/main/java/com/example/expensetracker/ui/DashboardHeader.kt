@@ -1,4 +1,4 @@
-package com.example.expensetracker.ui
+package com.keshav.expensetracker.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons

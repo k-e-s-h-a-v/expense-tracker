@@ -1,4 +1,4 @@
-package com.example.expensetracker.ui
+package com.keshav.expensetracker.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,7 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.expensetracker.model.SmsTransaction
+import com.keshav.expensetracker.model.SmsTransaction
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -61,9 +61,10 @@ private fun TransactionItem(
         val sdf = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
         var isEditingMerchant by remember { mutableStateOf(false) }
         var showFullMessage by remember { mutableStateOf(false) }
-        var merchantText by remember(transaction.id, transaction.merchant) {
-                mutableStateOf(transaction.merchant.orEmpty())
-        }
+        var merchantText by
+                remember(transaction.id, transaction.merchant) {
+                        mutableStateOf(transaction.merchant.orEmpty())
+                }
 
         if (showFullMessage) {
                 AlertDialog(
@@ -88,7 +89,9 @@ private fun TransactionItem(
                                         ) {
                                                 Text(
                                                         text = sdf.format(Date(transaction.dateMs)),
-                                                        style = MaterialTheme.typography.labelMedium,
+                                                        style =
+                                                                MaterialTheme.typography
+                                                                        .labelMedium,
                                                         color = MaterialTheme.colorScheme.outline
                                                 )
                                                 Text(
@@ -112,7 +115,11 @@ private fun TransactionItem(
                                 containerColor = MaterialTheme.colorScheme.surface
                         )
         ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Column(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
                         if (isEditingMerchant) {
                                 CompactTextField(
                                         value = merchantText,
@@ -122,8 +129,14 @@ private fun TransactionItem(
                                                 IconButton(
                                                         onClick = {
                                                                 val trimmed = merchantText.trim()
-                                                                if (trimmed != transaction.merchant.orEmpty()) {
-                                                                        onAssignMerchant(transaction, trimmed)
+                                                                if (trimmed !=
+                                                                                transaction.merchant
+                                                                                        .orEmpty()
+                                                                ) {
+                                                                        onAssignMerchant(
+                                                                                transaction,
+                                                                                trimmed
+                                                                        )
                                                                 }
                                                                 merchantText = trimmed
                                                                 isEditingMerchant = false
@@ -132,9 +145,12 @@ private fun TransactionItem(
                                                 ) {
                                                         Icon(
                                                                 Icons.Default.Check,
-                                                                contentDescription = "Save merchant",
+                                                                contentDescription =
+                                                                        "Save merchant",
                                                                 modifier = Modifier.size(18.dp),
-                                                                tint = MaterialTheme.colorScheme.primary
+                                                                tint =
+                                                                        MaterialTheme.colorScheme
+                                                                                .primary
                                                         )
                                                 }
                                         },
@@ -154,15 +170,18 @@ private fun TransactionItem(
                                 ) {
                                         Text(
                                                 text =
-                                                        transaction.merchant?.takeIf { it.isNotBlank() }
+                                                        transaction.merchant?.takeIf {
+                                                                it.isNotBlank()
+                                                        }
                                                                 ?: "Unknown merchant",
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
                                                 modifier =
-                                                        Modifier.weight(1f)
-                                                                .clickable { showFullMessage = true },
+                                                        Modifier.weight(1f).clickable {
+                                                                showFullMessage = true
+                                                        },
                                                 color =
                                                         if (transaction.merchant.isNullOrBlank())
                                                                 MaterialTheme.colorScheme.outline
@@ -170,7 +189,8 @@ private fun TransactionItem(
                                         )
                                         IconButton(
                                                 onClick = {
-                                                        merchantText = transaction.merchant.orEmpty()
+                                                        merchantText =
+                                                                transaction.merchant.orEmpty()
                                                         isEditingMerchant = true
                                                 },
                                                 modifier = Modifier.size(32.dp)
@@ -187,9 +207,9 @@ private fun TransactionItem(
 
                         Column(
                                 modifier =
-                                        Modifier.fillMaxWidth()
-                                                .padding(top = 6.dp)
-                                                .clickable { showFullMessage = true }
+                                        Modifier.fillMaxWidth().padding(top = 6.dp).clickable {
+                                                showFullMessage = true
+                                        }
                         ) {
                                 Text(
                                         text = formatSenderMessage(transaction),
@@ -224,11 +244,10 @@ private fun TransactionItem(
         }
 }
 
-private fun formatSenderMessage(transaction: SmsTransaction) =
-        buildAnnotatedString {
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(transaction.sender) }
-                append(": ")
-                append(transaction.body)
-        }
+private fun formatSenderMessage(transaction: SmsTransaction) = buildAnnotatedString {
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(transaction.sender) }
+        append(": ")
+        append(transaction.body)
+}
 
 private fun formatAmount(amount: Double) = "₹${String.format("%.2f", amount)}"

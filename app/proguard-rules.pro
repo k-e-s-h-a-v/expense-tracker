@@ -20,7 +20,7 @@
 }
 
 # App model types used in Compose state and SharedPreferences serialization.
--keep class com.example.expensetracker.model.** { *; }
+-keep class com.keshav.expensetracker.model.** { *; }
 
 # Kotlin metadata used by coroutines and default interface methods.
 -keepattributes InnerClasses,EnclosingMethod,Signature,*Annotation*

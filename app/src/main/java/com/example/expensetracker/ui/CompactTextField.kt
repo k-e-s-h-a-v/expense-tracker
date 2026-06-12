@@ -1,13 +1,13 @@
-package com.example.expensetracker.ui
+package com.keshav.expensetracker.ui
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -39,11 +39,19 @@ fun CompactTextField(
         BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = modifier.fillMaxWidth().height(36.dp).clip(shape).border(1.dp, colors.outline, shape),
+                modifier =
+                        modifier.fillMaxWidth()
+                                .height(36.dp)
+                                .clip(shape)
+                                .border(1.dp, colors.outline, shape),
                 textStyle = MaterialTheme.typography.bodySmall.copy(color = colors.onSurface),
                 singleLine = singleLine,
                 cursorBrush = SolidColor(colors.primary),
-                keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Done else ImeAction.Default),
+                keyboardOptions =
+                        KeyboardOptions(
+                                imeAction =
+                                        if (onDone != null) ImeAction.Done else ImeAction.Default
+                        ),
                 keyboardActions = KeyboardActions(onDone = { onDone?.invoke() }),
                 decorationBox = { innerTextField ->
                         Row(

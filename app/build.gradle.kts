@@ -8,37 +8,39 @@ plugins {
 fun loadDotEnv(file: File): Map<String, String> {
     if (!file.exists()) return emptyMap()
     return file.readLines()
-        .mapNotNull { line ->
-            val trimmed = line.trim()
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) return@mapNotNull null
-            val separatorIndex = trimmed.indexOf('=')
-            if (separatorIndex <= 0) return@mapNotNull null
-            trimmed.substring(0, separatorIndex).trim() to trimmed.substring(separatorIndex + 1).trim()
-        }
-        .toMap()
+            .mapNotNull { line ->
+                val trimmed = line.trim()
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) return@mapNotNull null
+                val separatorIndex = trimmed.indexOf('=')
+                if (separatorIndex <= 0) return@mapNotNull null
+                trimmed.substring(0, separatorIndex).trim() to
+                        trimmed.substring(separatorIndex + 1).trim()
+            }
+            .toMap()
 }
 
 val dotEnv = loadDotEnv(rootProject.file(".env"))
 
 fun env(name: String): String {
-    return System.getenv(name) ?: dotEnv[name]
-        ?: error("$name is not set. Copy .env.example to .env and configure release signing.")
+    return System.getenv(name)
+            ?: dotEnv[name]
+                    ?: error(
+                    "$name is not set. Copy .env.example to .env and configure release signing."
+            )
 }
 
 android {
-    namespace = "com.example.expensetracker"
+    namespace = "com.keshav.expensetracker"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.expensetracker"
+        applicationId = "com.keshav.expensetracker"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
-        vectorDrawables {
-            useSupportLibrary = true
-        }
+        vectorDrawables { useSupportLibrary = true }
     }
 
     signingConfigs {
@@ -54,8 +56,8 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
         }
@@ -64,20 +66,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { compose = true }
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
+    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
 
 dependencies {

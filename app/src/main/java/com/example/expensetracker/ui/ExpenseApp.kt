@@ -1,4 +1,4 @@
-package com.example.expensetracker.ui
+package com.keshav.expensetracker.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -24,7 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.expensetracker.viewmodel.ExpenseViewModel
+import com.keshav.expensetracker.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
