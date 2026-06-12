@@ -115,7 +115,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                       label = { Text("All Transactions") },
                       selected = activeCategoryId == null,
                       onClick = {
-                        viewModel.selectCategory(null)
+                        viewModel.selectCategory(context, null)
                         scope.launch { drawerState.close() }
                       },
                       modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -142,7 +142,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                                           .height(56.dp)
                                           .combinedClickable(
                                                   onClick = {
-                                                    viewModel.selectCategory(category.id)
+                                                    viewModel.selectCategory(context, category.id)
                                                     scope.launch { drawerState.close() }
                                                   },
                                                   onLongClick = {
@@ -222,48 +222,54 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                                                   activeCat.selectedMerchants != selectedMerchants)
                                 }
 
-                        if (isAnyFilterActive) {
-                          var showTopBarMenu by remember { mutableStateOf(false) }
-                          Box {
+                        if (activeCategoryId != null) {
+                          val activeCat = categories.find { it.id == activeCategoryId }
+                          if (activeCat != null) {
+                            // Save current state
                             IconButton(
                                     onClick = {
-                                      if (activeCategoryId != null) {
-                                        showTopBarMenu = true
-                                      } else {
-                                        showCreateCategoryDialog = true
-                                      }
+                                      viewModel.updateCategory(
+                                              context,
+                                              activeCategoryId!!,
+                                              activeCat.name
+                                      )
                                     },
-                                    enabled = isSaveEnabled || activeCategoryId != null
+                                    enabled = isSaveEnabled
+                            ) { Icon(Icons.Outlined.Save, contentDescription = "Save changes") }
+
+                            // Rename
+                            IconButton(
+                                    onClick = {
+                                      menuCategoryId = activeCategoryId
+                                      showCreateCategoryDialog = true
+                                    }
+                            ) { Icon(Icons.Default.Edit, contentDescription = "Rename") }
+
+                            // Duplicate
+                            IconButton(
+                                    onClick = {
+                                      viewModel.duplicateCategory(context, activeCategoryId!!)
+                                    }
+                            ) { Icon(Icons.Outlined.FileCopy, contentDescription = "Duplicate") }
+
+                            // Delete
+                            IconButton(
+                                    onClick = {
+                                      viewModel.deleteCategory(context, activeCategoryId!!)
+                                    }
                             ) {
                               Icon(
-                                      if (activeCategoryId != null) Icons.Default.MoreVert
-                                      else Icons.Outlined.Save,
-                                      contentDescription =
-                                              if (activeCategoryId != null) "More options"
-                                              else "Save Category"
-                              )
-                            }
-
-                            if (activeCategoryId != null) {
-                              CategoryDropdownMenu(
-                                      expanded = showTopBarMenu,
-                                      onDismiss = { showTopBarMenu = false },
-                                      onRename = {
-                                        showTopBarMenu = false
-                                        menuCategoryId = activeCategoryId
-                                        showCreateCategoryDialog = true
-                                      },
-                                      onDuplicate = {
-                                        showTopBarMenu = false
-                                        viewModel.duplicateCategory(context, activeCategoryId!!)
-                                      },
-                                      onDelete = {
-                                        showTopBarMenu = false
-                                        viewModel.deleteCategory(context, activeCategoryId!!)
-                                      }
+                                      Icons.Outlined.Delete,
+                                      contentDescription = "Delete",
+                                      tint = MaterialTheme.colorScheme.error
                               )
                             }
                           }
+                        } else if (isAnyFilterActive) {
+                          IconButton(
+                                  onClick = { showCreateCategoryDialog = true },
+                                  enabled = isSaveEnabled
+                          ) { Icon(Icons.Outlined.Save, contentDescription = "Save Category") }
                         }
                       },
                       colors =

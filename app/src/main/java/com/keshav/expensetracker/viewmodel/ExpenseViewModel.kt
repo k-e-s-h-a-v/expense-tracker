@@ -138,7 +138,7 @@ class ExpenseViewModel : ViewModel() {
 
         _categories.value = _categories.value.filter { it.id != categoryId }
         if (_activeCategoryId.value == categoryId) {
-            selectCategory(null)
+            selectCategory(context = context, categoryId = null)
         }
     }
 
@@ -162,7 +162,7 @@ class ExpenseViewModel : ViewModel() {
         prefs.edit().putStringSet("categories", currentStrings).apply()
     }
 
-    fun selectCategory(categoryId: String?) {
+    fun selectCategory(context: Context, categoryId: String?) {
         _activeCategoryId.value = categoryId
         if (categoryId == null) {
             clearFilters()
@@ -176,6 +176,7 @@ class ExpenseViewModel : ViewModel() {
                 _selectedMerchants.value = it.selectedMerchants
             }
         }
+        loadMessages(context)
     }
 
     private fun serializeCategory(cat: ExpenseCategory): String {
