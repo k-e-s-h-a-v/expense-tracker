@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.keshav.expensetracker.model.ExpenseCategory
 import com.keshav.expensetracker.model.SmsTransaction
 import java.util.*
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +16,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+data class FilterSnapshot(
+    val startDateMs: Long,
+    val endDateMs: Long,
+    val selectedSenders: Set<String>,
+    val selectedMerchants: Set<String>,
+    val searchQuery: String = ""
+)
+
 class ExpenseViewModel : ViewModel() {
+    // Defaults for the "All Transactions" view.
+    val defaultDateMs = getFirstDayOfMonth()
+    val defaultEndDateMs = getEndOfToday()
+
     private val _transactions = MutableStateFlow<List<SmsTransaction>>(emptyList())
     val transactions: StateFlow<List<SmsTransaction>> = _transactions.asStateFlow()
 
@@ -24,8 +38,14 @@ class ExpenseViewModel : ViewModel() {
     private val _totalSpent = MutableStateFlow(0.0)
     val totalSpent: StateFlow<Double> = _totalSpent.asStateFlow()
 
-    private val _selectedDateMs = MutableStateFlow(getFirstDayOfMonth())
+    private val _selectedDateMs = MutableStateFlow(defaultDateMs)
     val selectedDateMs: StateFlow<Long> = _selectedDateMs.asStateFlow()
+
+    private val _selectedEndDateMs = MutableStateFlow(defaultEndDateMs)
+    val selectedEndDateMs: StateFlow<Long> = _selectedEndDateMs.asStateFlow()
+
+    private val _hasRollingEndDate = MutableStateFlow(true)
+    val hasRollingEndDate: StateFlow<Boolean> = _hasRollingEndDate.asStateFlow()
 
     // State to track selected filter senders (SMS address)
     private val _selectedSenders = MutableStateFlow<Set<String>>(emptySet())
@@ -43,9 +63,6 @@ class ExpenseViewModel : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    // Default date for "All Transactions"
-    val defaultDateMs = getFirstDayOfMonth()
 
     private val amountRegex = Regex("(?i)(?:rs\\.?|inr)\\s?([\\d,]+\\.?\\d*)")
     private val debitRegex =
@@ -69,6 +86,7 @@ class ExpenseViewModel : ViewModel() {
     // Load everything
     fun init(context: Context) {
         loadCategories(context)
+        resolveRollingEndDate()
         loadMessages(context)
     }
 
@@ -86,8 +104,11 @@ class ExpenseViewModel : ViewModel() {
                         id = id,
                         name = name,
                         startDateMs = _selectedDateMs.value,
+                        endDateMs = _selectedEndDateMs.value,
                         selectedSenders = _selectedSenders.value,
-                        selectedMerchants = _selectedMerchants.value
+                        selectedMerchants = _selectedMerchants.value,
+                        searchQuery = _searchQuery.value,
+                        hasRollingEndDate = _hasRollingEndDate.value
                 )
         saveCategoryToPrefs(context, newCat)
 
@@ -103,8 +124,11 @@ class ExpenseViewModel : ViewModel() {
                 currentCat.copy(
                         name = newName,
                         startDateMs = _selectedDateMs.value,
+                        endDateMs = _selectedEndDateMs.value,
                         selectedSenders = _selectedSenders.value,
-                        selectedMerchants = _selectedMerchants.value
+                        selectedMerchants = _selectedMerchants.value,
+                        searchQuery = _searchQuery.value,
+                        hasRollingEndDate = _hasRollingEndDate.value
                 )
 
         // Remove old and add new in SharedPreferences
@@ -166,14 +190,19 @@ class ExpenseViewModel : ViewModel() {
         _activeCategoryId.value = categoryId
         if (categoryId == null) {
             clearFilters()
-            _selectedDateMs.value =
-                    getFirstDayOfMonth() // Or keep current? User said category is a filter.
+            _hasRollingEndDate.value = true
+            _selectedDateMs.value = getFirstDayOfMonth()
+            resolveRollingEndDate()
         } else {
             val cat = _categories.value.find { it.id == categoryId }
             cat?.let {
                 _selectedDateMs.value = it.startDateMs
+                _selectedEndDateMs.value = it.endDateMs
+                _hasRollingEndDate.value = it.hasRollingEndDate
+                resolveRollingEndDate()
                 _selectedSenders.value = it.selectedSenders
                 _selectedMerchants.value = it.selectedMerchants
+                _searchQuery.value = it.searchQuery
             }
         }
         loadMessages(context)
@@ -182,21 +211,29 @@ class ExpenseViewModel : ViewModel() {
     private fun serializeCategory(cat: ExpenseCategory): String {
         val senders = cat.selectedSenders.joinToString(",")
         val merchants = cat.selectedMerchants.joinToString(",")
-        return "${cat.id}|${cat.name}|${cat.startDateMs}|$senders|$merchants"
+        return "${cat.id}|${cat.name}|${cat.startDateMs}|${cat.endDateMs}|$senders|$merchants|${cat.searchQuery}|${cat.hasRollingEndDate}"
     }
 
     private fun deserializeCategory(str: String): ExpenseCategory? {
         return try {
             val parts = str.split("|")
             if (parts.size < 5) return null
+            val startDateMs = parts[2].toLong()
+            val endDateMs = if (parts.size >= 6) parts[3].toLong() else startDateMs
+            val sendersValue = if (parts.size >= 6) parts[4] else parts[3]
+            val merchantsValue = if (parts.size >= 6) parts[5] else parts[4]
+
             ExpenseCategory(
                     id = parts[0],
                     name = parts[1],
-                    startDateMs = parts[2].toLong(),
+                    startDateMs = startDateMs,
+                    endDateMs = endDateMs,
                     selectedSenders =
-                            if (parts[3].isEmpty()) emptySet() else parts[3].split(",").toSet(),
+                            if (sendersValue.isEmpty()) emptySet() else sendersValue.split(",").toSet(),
                     selectedMerchants =
-                            if (parts[4].isEmpty()) emptySet() else parts[4].split(",").toSet()
+                            if (merchantsValue.isEmpty()) emptySet() else merchantsValue.split(",").toSet(),
+                    searchQuery = parts.getOrElse(6) { "" },
+                    hasRollingEndDate = parts.getOrElse(7) { "false" }.toBoolean()
             )
         } catch (e: Exception) {
             null
@@ -206,18 +243,43 @@ class ExpenseViewModel : ViewModel() {
     // Load messages based on the selected date
     fun loadMessages(context: Context) {
         viewModelScope.launch {
-            val list = fetchAndParseSms(context, _selectedDateMs.value)
+            val list = fetchAndParseSms(context, _selectedDateMs.value, _selectedEndDateMs.value)
             _transactions.value = list
             _totalSpent.value = list.filter { it.isDebit }.sumOf { it.amount }
 
             // Also fetch all unique senders from the same period
-            _allSenders.value = fetchAllSenders(context, _selectedDateMs.value)
+            _allSenders.value = fetchAllSenders(context, _selectedDateMs.value, _selectedEndDateMs.value)
         }
     }
 
     fun updateStartDate(context: Context, dateMs: Long) {
-        _selectedDateMs.value = dateMs
+        _selectedDateMs.value = startOfDay(dateMs)
         loadMessages(context) // Reload when date changes
+    }
+
+    fun updateEndDate(context: Context, dateMs: Long) {
+        _selectedEndDateMs.value = endOfDay(dateMs)
+        _hasRollingEndDate.value = false
+        loadMessages(context) // Reload when date changes
+    }
+
+    fun setRollingEndDate(context: Context, enabled: Boolean) {
+        _hasRollingEndDate.value = enabled
+        if (enabled) resolveRollingEndDate()
+        loadMessages(context)
+    }
+
+    fun refreshRollingEndDate(context: Context) {
+        if (_hasRollingEndDate.value && _selectedEndDateMs.value != getEndOfToday()) {
+            resolveRollingEndDate()
+            loadMessages(context)
+        }
+    }
+
+    fun updateDateRange(startDateMs: Long, endDateMs: Long) {
+        _selectedDateMs.value = startDateMs
+        _selectedEndDateMs.value = endDateMs
+        _hasRollingEndDate.value = false
     }
 
     fun updateSearchQuery(query: String) {
@@ -257,18 +319,206 @@ class ExpenseViewModel : ViewModel() {
     fun clearFilters() {
         _selectedSenders.value = emptySet()
         _selectedMerchants.value = emptySet()
-        _selectedDateMs.value = defaultDateMs
+        _searchQuery.value = ""
+        _hasRollingEndDate.value = true
+        _selectedDateMs.value = getFirstDayOfMonth()
+        resolveRollingEndDate()
     }
 
-    private suspend fun fetchAllSenders(context: Context, sinceMs: Long): Set<String> =
+    fun buildFilterSnapshot(): FilterSnapshot {
+        return FilterSnapshot(
+            startDateMs = _selectedDateMs.value,
+            endDateMs = _selectedEndDateMs.value,
+            selectedSenders = _selectedSenders.value,
+            selectedMerchants = _selectedMerchants.value,
+            searchQuery = _searchQuery.value
+        )
+    }
+
+    fun applyFilterSnapshot(snapshot: FilterSnapshot) {
+        _selectedDateMs.value = snapshot.startDateMs
+        _selectedEndDateMs.value = snapshot.endDateMs
+        _selectedSenders.value = snapshot.selectedSenders.toSet()
+        _selectedMerchants.value = snapshot.selectedMerchants.toSet()
+        _searchQuery.value = snapshot.searchQuery
+    }
+
+    fun exportFilters(context: Context) {
+        val prefs = context.getSharedPreferences("expense_filter_snapshot", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("current", serializeFilterSnapshot(buildFilterSnapshot()))
+            .apply()
+    }
+
+    fun exportFiltersToJson(context: Context, uri: Uri) {
+        val snapshot = buildFilterSnapshot()
+        val savedCategories = _categories.value.toList()
+        val activeId = _activeCategoryId.value
+        val rollingEndDate = _hasRollingEndDate.value
+        viewModelScope.launch(Dispatchers.IO) {
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                val categoriesJson = JSONArray().apply {
+                    savedCategories.forEach { put(it.toJson()) }
+                }
+                writer.write(
+                        JSONObject()
+                                .put("format", "expense-tracker-filters")
+                                .put("version", 2)
+                                .put("activeFilter", snapshot.toJson(rollingEndDate))
+                                .put("activeCategoryId", activeId)
+                                .put("categories", categoriesJson)
+                                .toString(2)
+                )
+            }
+        }
+    }
+
+    fun importFiltersFromJson(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val json = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                        ?: return@launch
+                val filter = JSONObject(json)
+                require(filter.getString("format") == "expense-tracker-filters")
+                val activeFilter = filter.optJSONObject("activeFilter") ?: filter
+                val snapshot = activeFilter.toFilterSnapshot()
+                _hasRollingEndDate.value = activeFilter.optBoolean("rollingEndDate", false)
+                val importedCategories = filter.categories()
+                if (importedCategories.isNotEmpty()) mergeImportedCategories(context, importedCategories)
+                _activeCategoryId.value = filter.optString("activeCategoryId").takeIf { id ->
+                    _categories.value.any { it.id == id }
+                }
+                applyFilterSnapshot(snapshot)
+                resolveRollingEndDate()
+                loadMessages(context)
+            }
+        }
+    }
+
+    fun importFilters(context: Context) {
+        val prefs = context.getSharedPreferences("expense_filter_snapshot", Context.MODE_PRIVATE)
+        val snapshot = prefs.getString("current", null)?.let(::parseFilterSnapshot) ?: return
+        applyFilterSnapshot(snapshot)
+    }
+
+    companion object {
+        fun parseFilterSnapshot(raw: String): FilterSnapshot {
+            val parts = raw.split("|")
+            require(parts.size >= 4)
+            return FilterSnapshot(
+                startDateMs = parts[0].toLong(),
+                endDateMs = parts[1].toLong(),
+                selectedSenders = if (parts[2].isEmpty()) emptySet() else parts[2].split(",").toSet(),
+                selectedMerchants = if (parts[3].isEmpty()) emptySet() else parts[3].split(",").toSet(),
+                searchQuery = parts.getOrElse(4) { "" }
+            )
+        }
+
+        fun matchesSearchQuery(query: String, vararg searchableValues: String?): Boolean {
+            if (query.isBlank()) return true
+            val searchableText = searchableValues.filterNotNull().joinToString(" ")
+            return query
+                    .trim()
+                    .split(Regex("\\s+(?i:OR)\\s+"))
+                    .any { andGroup ->
+                        andGroup
+                                .split(Regex("\\s+(?i:AND)\\s+"))
+                                .filter { it.isNotBlank() }
+                                .all { keyword ->
+                                    searchableText.contains(keyword.trim(), ignoreCase = true)
+                                }
+                    }
+        }
+    }
+
+    private fun serializeFilterSnapshot(snapshot: FilterSnapshot): String {
+        val senders = snapshot.selectedSenders.joinToString(",")
+        val merchants = snapshot.selectedMerchants.joinToString(",")
+        return "${snapshot.startDateMs}|${snapshot.endDateMs}|$senders|$merchants|${snapshot.searchQuery}"
+    }
+
+    private fun JSONObject.stringSet(key: String): Set<String> {
+        val values = optJSONArray(key) ?: return emptySet()
+        return buildSet { for (index in 0 until values.length()) add(values.getString(index)) }
+    }
+
+    private fun FilterSnapshot.toJson(rollingEndDate: Boolean) =
+            JSONObject()
+                    .put("startDateMs", startDateMs)
+                    .put("endDateMs", endDateMs)
+                    .put("senders", JSONArray(selectedSenders.toList()))
+                    .put("merchants", JSONArray(selectedMerchants.toList()))
+                    .put("searchQuery", searchQuery)
+                    .put("rollingEndDate", rollingEndDate)
+
+    private fun ExpenseCategory.toJson() =
+            JSONObject()
+                    .put("id", id)
+                    .put("name", name)
+                    .put("startDateMs", startDateMs)
+                    .put("endDateMs", endDateMs)
+                    .put("senders", JSONArray(selectedSenders.toList()))
+                    .put("merchants", JSONArray(selectedMerchants.toList()))
+                    .put("searchQuery", searchQuery)
+                    .put("rollingEndDate", hasRollingEndDate)
+
+    private fun JSONObject.toFilterSnapshot() = FilterSnapshot(
+            startDateMs = getLong("startDateMs"),
+            endDateMs = getLong("endDateMs"),
+            selectedSenders = stringSet("senders"),
+            selectedMerchants = stringSet("merchants"),
+            searchQuery = optString("searchQuery")
+    )
+
+    private fun JSONObject.categories(): List<ExpenseCategory> {
+        val values = optJSONArray("categories") ?: return emptyList()
+        return buildList {
+            for (index in 0 until values.length()) {
+                val category = values.optJSONObject(index) ?: continue
+                add(
+                        ExpenseCategory(
+                                id = category.getString("id"),
+                                name = category.getString("name"),
+                                startDateMs = category.getLong("startDateMs"),
+                                endDateMs = category.getLong("endDateMs"),
+                                selectedSenders = category.stringSet("senders"),
+                                selectedMerchants = category.stringSet("merchants"),
+                                searchQuery = category.optString("searchQuery"),
+                                hasRollingEndDate = category.optBoolean("rollingEndDate", false)
+                        )
+                )
+            }
+        }
+    }
+
+    private fun mergeImportedCategories(context: Context, imported: List<ExpenseCategory>) {
+        val merged = LinkedHashMap<String, ExpenseCategory>()
+        _categories.value.forEach { merged[it.id] = it }
+        imported.forEach { merged[it.id] = it }
+        _categories.value = merged.values.toList()
+        context.getSharedPreferences("expense_categories", Context.MODE_PRIVATE)
+                .edit()
+                .putStringSet("categories", _categories.value.mapTo(mutableSetOf(), ::serializeCategory))
+                .apply()
+    }
+
+    private fun resolveRollingEndDate() {
+        if (_hasRollingEndDate.value) _selectedEndDateMs.value = getEndOfToday()
+    }
+
+    private suspend fun fetchAllSenders(
+        context: Context,
+        sinceMs: Long,
+        untilMs: Long
+    ): Set<String> =
             withContext(Dispatchers.IO) {
                 val senders = mutableSetOf<String>()
                 val cursor =
                         context.contentResolver.query(
                                 Uri.parse("content://sms/inbox"),
                                 arrayOf("address"),
-                                "date >= ?",
-                                arrayOf(sinceMs.toString()),
+                                "date >= ? AND date <= ?",
+                                arrayOf(sinceMs.toString(), untilMs.toString()),
                                 null
                         )
                 cursor?.use {
@@ -280,7 +530,11 @@ class ExpenseViewModel : ViewModel() {
                 return@withContext senders
             }
 
-    private suspend fun fetchAndParseSms(context: Context, sinceMs: Long): List<SmsTransaction> =
+    private suspend fun fetchAndParseSms(
+        context: Context,
+        sinceMs: Long,
+        untilMs: Long
+    ): List<SmsTransaction> =
             withContext(Dispatchers.IO) {
                 val transactions = mutableListOf<SmsTransaction>()
                 val prefs = context.getSharedPreferences("merchant_prefs", Context.MODE_PRIVATE)
@@ -289,8 +543,8 @@ class ExpenseViewModel : ViewModel() {
                         context.contentResolver.query(
                                 Uri.parse("content://sms/inbox"),
                                 arrayOf("_id", "address", "date", "body"),
-                                "date >= ?",
-                                arrayOf(sinceMs.toString()),
+                                "date >= ? AND date <= ?",
+                                arrayOf(sinceMs.toString(), untilMs.toString()),
                                 "date DESC"
                         )
 
@@ -349,6 +603,33 @@ class ExpenseViewModel : ViewModel() {
         cal.set(Calendar.HOUR_OF_DAY, 0)
         cal.set(Calendar.MINUTE, 0)
         cal.set(Calendar.SECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun getEndOfToday(): Long {
+        val cal = Calendar.getInstance()
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
+        return cal.timeInMillis
+    }
+
+    private fun startOfDay(dateMs: Long): Long {
+        val cal = Calendar.getInstance().apply { timeInMillis = dateMs }
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun endOfDay(dateMs: Long): Long {
+        val cal = Calendar.getInstance().apply { timeInMillis = dateMs }
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
         return cal.timeInMillis
     }
 }

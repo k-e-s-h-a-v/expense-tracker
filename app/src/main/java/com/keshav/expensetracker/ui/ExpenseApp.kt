@@ -24,6 +24,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.keshav.expensetracker.viewmodel.ExpenseViewModel
 import kotlinx.coroutines.launch
 
@@ -31,11 +34,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
   val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
   val transactions by viewModel.transactions.collectAsState()
   val allSenders by viewModel.allSenders.collectAsState()
   val categories by viewModel.categories.collectAsState()
   val activeCategoryId by viewModel.activeCategoryId.collectAsState()
   val selectedDateMs by viewModel.selectedDateMs.collectAsState()
+  val selectedEndDateMs by viewModel.selectedEndDateMs.collectAsState()
+  val hasRollingEndDate by viewModel.hasRollingEndDate.collectAsState()
   val selectedSenders by viewModel.selectedSenders.collectAsState()
   val selectedMerchants by viewModel.selectedMerchants.collectAsState()
   val searchQuery by viewModel.searchQuery.collectAsState()
@@ -62,12 +68,9 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
   // uiTransactions are further filtered by search, but do not impact the totalSpent calculation
   val uiTransactions =
           remember(filteredTransactions, searchQuery) {
-            if (searchQuery.isBlank()) filteredTransactions
-            else
-                    filteredTransactions.filter {
-                      it.body.contains(searchQuery, ignoreCase = true) ||
-                              (it.merchant?.contains(searchQuery, ignoreCase = true) ?: false)
-                    }
+            filteredTransactions.filter {
+              ExpenseViewModel.matchesSearchQuery(searchQuery, it.body, it.merchant, it.sender)
+            }
           }
 
   // Recalculate total spent from the active filtered transaction set (ignoring search)
@@ -94,6 +97,15 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
             }
           }
 
+  val exportFiltersLauncher =
+          rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri?.let { viewModel.exportFiltersToJson(context, it) }
+          }
+  val importFiltersLauncher =
+          rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { viewModel.importFiltersFromJson(context, it) }
+          }
+
   // Initial load
   LaunchedEffect(hasPermission) {
     if (hasPermission) {
@@ -101,6 +113,16 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
     } else {
       permissionLauncher.launch(Manifest.permission.READ_SMS)
     }
+  }
+
+  DisposableEffect(lifecycleOwner, hasPermission) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (hasPermission && event == Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshRollingEndDate(context)
+      }
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 
   val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -188,6 +210,25 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
               }
 
               Spacer(modifier = Modifier.weight(1f))
+
+              NavigationDrawerItem(
+                      label = { Text("Import Filter Bundle") },
+                      selected = false,
+                      onClick = {
+                        importFiltersLauncher.launch(arrayOf("application/json"))
+                        scope.launch { drawerState.close() }
+                      },
+                      modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+              )
+              NavigationDrawerItem(
+                      label = { Text("Export All Filters") },
+                      selected = false,
+                      onClick = {
+                        exportFiltersLauncher.launch("expense-tracker-filters.json")
+                        scope.launch { drawerState.close() }
+                      },
+                      modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+              )
             }
           }
   ) {
@@ -208,8 +249,10 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                       actions = {
                         val isAnyFilterActive =
                                 selectedDateMs != viewModel.defaultDateMs ||
+                                        !hasRollingEndDate ||
                                         selectedSenders.isNotEmpty() ||
-                                        selectedMerchants.isNotEmpty()
+                                        selectedMerchants.isNotEmpty() ||
+                                        searchQuery.isNotBlank()
 
                         val isSaveEnabled =
                                 if (activeCategoryId == null) {
@@ -217,9 +260,12 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                                 } else {
                                   val activeCat = categories.find { it.id == activeCategoryId }
                                   activeCat != null &&
-                                          (activeCat.startDateMs != selectedDateMs ||
+                                                  (activeCat.startDateMs != selectedDateMs ||
+                                                  activeCat.endDateMs != selectedEndDateMs ||
+                                                  activeCat.hasRollingEndDate != hasRollingEndDate ||
                                                   activeCat.selectedSenders != selectedSenders ||
-                                                  activeCat.selectedMerchants != selectedMerchants)
+                                                  activeCat.selectedMerchants != selectedMerchants ||
+                                                  activeCat.searchQuery != searchQuery)
                                 }
 
                         if (activeCategoryId != null) {
@@ -284,7 +330,11 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
           DashboardHeader(
                   totalSpent = totalSpent,
                   selectedDateMs = selectedDateMs,
-                  onDateSelected = { newDateMs -> viewModel.updateStartDate(context, newDateMs) }
+                  selectedEndDateMs = selectedEndDateMs,
+                  hasRollingEndDate = hasRollingEndDate,
+                  onStartDateSelected = { newDateMs -> viewModel.updateStartDate(context, newDateMs) },
+                  onEndDateSelected = { newDateMs -> viewModel.updateEndDate(context, newDateMs) },
+                  onRollingEndDateChange = { enabled -> viewModel.setRollingEndDate(context, enabled) }
           )
 
           FilterSection(
@@ -301,7 +351,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
                   value = searchQuery,
                   onValueChange = { viewModel.updateSearchQuery(it) },
                   modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                  placeholder = "Search transactions...",
+                  placeholder = "Search transactions…  (coffee AND card, fuel OR taxi)",
                   leadingIcon = {
                     Icon(
                             Icons.Default.Search,
@@ -358,7 +408,7 @@ fun ExpenseApp(viewModel: ExpenseViewModel = viewModel()) {
             text = {
               Column {
                 Text(
-                        "This will save the current filters (Date, Senders, Merchants) as a category.",
+                        "This will save the current filters, including search keywords, as a category.",
                         style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(modifier = Modifier.height(12.dp))
